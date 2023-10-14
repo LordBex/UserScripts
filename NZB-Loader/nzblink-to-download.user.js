@@ -3,7 +3,7 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             0.2
+// @version             0.3
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
 // ==/UserScript==
@@ -12,6 +12,7 @@ function downloadFile(downloadLink, fileName){
     if (!fileName.endsWith('.nzb')){
         fileName = fileName + '.nzb'
     }
+    console.log("Download Nzb von " + downloadLink)
     GM_xmlhttpRequest({
         method: "GET",
         url: downloadLink,
@@ -25,6 +26,9 @@ function downloadFile(downloadLink, fileName){
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        },
+        onerror: function(){
+            console.error("Failed Request for nzb-king")
         }
     });
 }
@@ -45,10 +49,29 @@ function parseNzblnkUrl(url) {
     return result;
 }
 
-function loadNzb(nzblnk) {
-    let nzb_info = parseNzblnkUrl(nzblnk)
+function loadFromNzbKing(nzb_info, when_failed) {
+    GM_xmlhttpRequest({
+        method: "GET",
+        url: "https://www.nzbking.com/?q=" + nzb_info.h,
+        onload: function(response) {
+            let parser = new DOMParser();
+            let doc = parser.parseFromString(response.responseText, 'text/html');
+
+            for (let e of doc.querySelectorAll('a[href^="/nzb:"]')){
+                console.log("Auf nzbking gefunden")
+                downloadFile("https://www.nzbking.com" + e.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`)
+                return
+            }
+            return when_failed()
+        },
+        onerror: function(){
+            console.error("Failed Request for nzb-index")
+        }
+    });
+}
+
+function loadFromNzbIndex(nzb_info, when_failed) {
     let url = `https://nzbindex.nl/search/json?q=${nzb_info.h}&max=5&minage=0&maxage=0&hidespam=1&hidepassword=0&sort=agedesc&minsize=0&maxsize=0&complete=0&hidecross=0&hasNFO=0&poster=&p=0`
-    console.log("NZB geladen");
 
     GM_xmlhttpRequest({
         method: "GET",
@@ -57,12 +80,22 @@ function loadNzb(nzblnk) {
             console.log(response)
             let data = JSON.parse(response.responseText);
             if ( data.total ===  0 ){
-                alert('NZB nicht gefunden');
-                return
+                return when_failed()
             }
+            console.log("Auf nzbindex.nl gefunden")
             downloadFile("https://nzbindex.nl/download/" + data.results[0].id, `${nzb_info.t}{{${nzb_info.p}}}`)
         }
     });
+}
+
+function loadNzb(nzblnk){
+    let nzb_info = parseNzblnkUrl(nzblnk)
+
+    const king = function() {
+        loadFromNzbKing(nzb_info, function() { alert("Keine Nzb gefunden ")})
+    }
+
+    loadFromNzbIndex(nzb_info, king)
 }
 
 function setLNKTrigger(element){
