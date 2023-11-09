@@ -3,12 +3,93 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             0.3
+// @version             0.4
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
 // ==/UserScript==
 
-function downloadFile(downloadLink, fileName){
+
+// SabNzbd
+
+const AUSGABE = 'URLtoSABnzbd'  // URLtoSABnzbd | NZBtoSABnzbd (funktioniert nicht bei safari) | download
+const SAB_API_KEY = 'API-KEY-HERE';
+const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // z.B. 'http://localhost:8080/sabnzbd/api'
+
+
+function addNZBtoSABnzbd(downloadLink, fileName) {
+    const mode = 'addurl';
+    const name = encodeURIComponent(downloadLink);
+    const requestURL = `${SAB_URL}?output=json&mode=${mode}&name=${name}&nzbname=${fileName}&apikey=${SAB_API_KEY}`;
+
+    GM_xmlhttpRequest({
+        method: "GET",
+        url: requestURL,
+        headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        },
+        onload: function(response) {
+            console.log(response.responseText);
+            let result = JSON.parse(response.responseText);
+
+            if (result.status === true) {
+                alert('Erfolg! NZB hinzugefügt. ID: ' + result.nzo_ids.join(', '));
+            } else {
+                alert('Fehler beim Hinzufügen der NZB-Datei zu SABnzbd.\n'+result.error);
+            }
+        },
+        onerror: function(response) {
+            console.error('Anfrage fehlgeschlagen', response);
+            alert("Anfrage an SABnzb schlug fail ! (mehr im Log)")
+        }
+    });
+}
+
+function uploadNZBtoSABnzbd(responseText, fileName) {
+
+    let formData = new FormData();
+    let blob = new Blob([responseText], { type: "text/xml" });
+    formData.append('name', blob, fileName);
+    formData.append('mode', 'addfile');
+    formData.append('nzbname', fileName);
+    formData.append('output', 'json');
+    formData.append('apikey', SAB_API_KEY);
+
+    GM_xmlhttpRequest({
+        method: "POST",
+        url: SAB_URL,
+        data: formData,
+        onload: function(response) {
+            console.log('Upload response', response.status, response.statusText);
+            console.log('Response body', response.responseText);
+            let result = JSON.parse(response.responseText);
+            if (result.status === true) {
+                alert('Success! NZB added. ID: ' + result.nzo_ids.join(', '));
+            } else {
+                alert('Error adding NZB file to SABnzbd.\n'+(result.error || 'Unknown error'));
+            }
+        },
+        onerror: function(response) {
+            console.error('Error during file upload', response.status, response.statusText);
+            alert("Could not upload NZB! (more in log)");
+        }
+    });
+}
+
+// download file-code
+
+function saveFile(responseText, fileName) {
+    let blob = new Blob([responseText], { type: "application/x-nzb" });
+    let link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName // Dateiname ändern
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function downloadFile(downloadLink, fileName, callback){
     if (!fileName.endsWith('.nzb')){
         fileName = fileName + '.nzb'
     }
@@ -16,21 +97,32 @@ function downloadFile(downloadLink, fileName){
     GM_xmlhttpRequest({
         method: "GET",
         url: downloadLink,
-        responseType: "blob",
         onload: function(nzbResponse) {
-            let blob = new Blob([nzbResponse.response], { type: "application/x-nzb" });
-            let link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName // Dateiname ändern
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            callback(nzbResponse.responseText, fileName)
         },
         onerror: function(){
-            console.error("Failed Request for nzb-king")
+            console.error("Failed Download for  " + downloadLink)
+            alert("Nzb könnte nicht geladen werden !")
         }
     });
+}
+
+// nzb handler
+
+function handleNzb(downloadLink, fileName){
+    switch (AUSGABE) {
+        case 'download':
+            downloadFile(downloadLink, fileName, saveFile)
+            break;
+        case 'URLtoSABnzbd':
+            addNZBtoSABnzbd(downloadLink, fileName)
+            break;
+        case 'NZBtoSABnzbd':
+            downloadFile(downloadLink, fileName, uploadNZBtoSABnzbd)
+            break;
+        default:
+            alert("Die Config für die Ausgaben ist falsch !")
+    }
 }
 
 function parseNzblnkUrl(url) {
@@ -59,7 +151,7 @@ function loadFromNzbKing(nzb_info, when_failed) {
 
             for (let e of doc.querySelectorAll('a[href^="/nzb:"]')){
                 console.log("Auf nzbking gefunden")
-                downloadFile("https://www.nzbking.com" + e.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`)
+                handleNzb("https://www.nzbking.com" + e.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`)
                 return
             }
             return when_failed()
@@ -83,7 +175,7 @@ function loadFromNzbIndex(nzb_info, when_failed) {
                 return when_failed()
             }
             console.log("Auf nzbindex.nl gefunden")
-            downloadFile("https://nzbindex.nl/download/" + data.results[0].id, `${nzb_info.t}{{${nzb_info.p}}}`)
+            handleNzb("https://nzbindex.nl/download/" + data.results[0].id, `${nzb_info.t}{{${nzb_info.p}}}`)
         }
     });
 }
@@ -141,3 +233,30 @@ function observeSiteChanges(){
 
 setLNKTrigger(document.body);
 observeSiteChanges();
+
+
+// utils
+
+async function getRawFormData(formData) {
+    // Wir erstellen eine URL, auf die wir eine Anfrage mit unserer FormData machen werden.
+    const dummyURL = URL.createObjectURL(new Blob([]));
+    const response = await fetch(dummyURL, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            // Wir fügen absichtlich keinen Inhaltstyp hinzu, da der Browser automatisch den richtigen Inhaltstyp hinzufügen sollte,
+            // einschließlich des richtigen Grenzwerts für die multipart/form-data.
+        }
+    });
+
+    // Wir holen den Request, der tatsächlich gesendet wurde.
+    const request = response.request || response;
+
+    // Extrahieren des Rohkörpers aus dem Request.
+    const body = await request.text();
+
+    // Aufräumen der erstellten Ressource.
+    URL.revokeObjectURL(dummyURL);
+
+    return body;
+}

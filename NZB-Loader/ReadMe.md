@@ -1,7 +1,7 @@
 ## NZBLink-to-Download UserScript
 
 ### Beschreibung
-Mit diesem UserScript kannst du NZB-Dateien direkt von nzbindex.nl runterladen, sobald du auf Links klickst, die mit dem "nzblnk:" Schema erstellt wurden. 
+Mit diesem UserScript kannst du NZB-Dateien direkt von nzbindex.nl runterladen, sobald du auf Links klickst, die mit dem "nzblnk:" Schema erstellt wurden.
 Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstellt, sollte jedoch auch mit Tampermonkey kompatibel sein.
 
 ### UserScripts
@@ -16,6 +16,18 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 - Wandelt "nzblnk:" Links um und ermöglicht den direkten Download der NZB von nzbindex.nl
 - Bennent Datei im üblichen NAME{{PASSWORT}}.nzb format
 
+### Einstellungen 
+
+#### Ausgabe: 
+
+| Wert         | Beschreibung                                                                |
+|--------------|-----------------------------------------------------------------------------|
+| URLtoSABnzbd | Die NZB-URL wird an SABnzbd weitergeleitet, NZB wird von SABnzbd geladen.   |
+| NZBtoSABnzbd | Die NZB direkt wird an SABnzbd weitergleitet, funktioniert nicht bei Safari |
+| download     | Die NZB wird in deinem Download Ordner gespeichert                          |
+
+> Bei **URLtoSABnzb** und **NZBtoSABnzb** wird die Domain zur API + der API Key benötigt.
+
 ### Installation
 
 **Für Userscripts (Safari Erweiterung):**
@@ -26,10 +38,10 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 > Kleiner Tipp: Wenn du den Datei-Pfad zu einem in der iCloud änderst, synchronisiert sich das Script automatisch mit deinem iPhone, Mac und iPad.
 
 **Anleitung aktivieren und verwenden vom Script:**
-1. Einstellungen, Safari, Erweiterungen, Userscript einschalten. 
+1. Einstellungen, Safari, Erweiterungen, Userscript einschalten.
 2. Safari Browser öffnen und dort Userscript aktivieren (muss für jede Seite mit "nzblnk:" gemacht werden)
 3. Zugriff für das Script erlauben (Einen Tag lang oder immer erlauben),
-4. Klick auf den "nzblnk:", die NZB wird nun bei nzbindex gesucht und geladen. 
+4. Klick auf den "nzblnk:", die NZB wird nun bei nzbindex gesucht und geladen.
 
 **Für Tampermonkey:**
 1. Installieren den [Tampermonkey](https://www.tampermonkey.net/) Userscript-Manager.
