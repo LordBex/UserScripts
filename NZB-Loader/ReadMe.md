@@ -15,6 +15,7 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 - Erkennt automatisch Links mit dem Schema "nzblnk:"
 - Wandelt "nzblnk:" Links um und ermöglicht den direkten Download der NZB von nzbindex.nl
 - Bennent Datei im üblichen NAME{{PASSWORT}}.nzb format
+- Auswahl der Kategorie bei SABnzbd
 
 ### Einstellungen 
 
@@ -26,7 +27,22 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 | NZBtoSABnzbd | Die NZB direkt wird an SABnzbd weitergleitet, funktioniert nicht bei Safari |
 | download     | Die NZB wird in deinem Download Ordner gespeichert                          |
 
-> Bei **URLtoSABnzb** und **NZBtoSABnzb** wird die Domain zur API + der API Key benötigt.
+**Für SABnzbd**
+
+```js
+const SAB_API_KEY = '...'; // required
+const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // required z.B. 'http://localhost:8080/sabnzbd/api'
+
+const SAB_CATEGORY_SELECT_ON = false // SABnzbd Kategorie Auswahl
+const SAB_DEFAULT_CATEGORY = '*' // default: *
+```
+
+> Wenn SAB_CATEGORY_SELECT_ON aktiviert ist, ist der Einsatz des API-Keys erforderlich, da der NZB-Key nicht ausreicht.
+
+<center>
+<img src="images/cat-select-modal.png" style="max-height: 400px">
+</center>
+
 
 ### Installation
 

@@ -3,23 +3,38 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             0.4
+// @version             v0.5
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
 // ==/UserScript==
 
 
-// SabNzbd
+//- Default Config:
 
-const AUSGABE = 'URLtoSABnzbd'  // URLtoSABnzbd | NZBtoSABnzbd (funktioniert nicht bei safari) | download
-const SAB_API_KEY = 'API-KEY-HERE';
+const AUSGABE = 'download'
+// mögliche Werte:
+// - download
+// - URLtoSABnzb
+// - NZBtoSABnzb (nicht kompatible mit Safari)
+
+// ------------------------------------------------------------
+//- SabNzbd Config:
+
+const SAB_API_KEY = '....';
 const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // z.B. 'http://localhost:8080/sabnzbd/api'
 
+const SAB_CATEGORY_SELECT_ON = true   // Bitte den Api-Key verwenden (nicht den Nzb-Key) !
+// or setup:
+const SAB_DEFAULT_CATEGORY = '*' // default: *
 
-function addNZBtoSABnzbd(downloadLink, fileName) {
+
+// ------------------------------------------------------------
+// sab-code
+
+function addNZBtoSABnzbd({downloadLink, fileName, category=SAB_DEFAULT_CATEGORY}) {
     const mode = 'addurl';
     const name = encodeURIComponent(downloadLink);
-    const requestURL = `${SAB_URL}?output=json&mode=${mode}&name=${name}&nzbname=${fileName}&apikey=${SAB_API_KEY}`;
+    const requestURL = `${SAB_URL}?output=json&mode=${mode}&name=${name}&nzbname=${fileName}&cat=${category}&apikey=${SAB_API_KEY}`;
 
     GM_xmlhttpRequest({
         method: "GET",
@@ -45,7 +60,7 @@ function addNZBtoSABnzbd(downloadLink, fileName) {
     });
 }
 
-function uploadNZBtoSABnzbd(responseText, fileName) {
+function uploadNZBtoSABnzbd({responseText, fileName, category=SAB_DEFAULT_CATEGORY}) {
 
     let formData = new FormData();
     let blob = new Blob([responseText], { type: "text/xml" });
@@ -53,6 +68,7 @@ function uploadNZBtoSABnzbd(responseText, fileName) {
     formData.append('mode', 'addfile');
     formData.append('nzbname', fileName);
     formData.append('output', 'json');
+    formData.append('cat', category);
     formData.append('apikey', SAB_API_KEY);
 
     GM_xmlhttpRequest({
@@ -76,9 +92,10 @@ function uploadNZBtoSABnzbd(responseText, fileName) {
     });
 }
 
+// ------------------------------------------------------------
 // download file-code
 
-function saveFile(responseText, fileName) {
+function saveFile({responseText, fileName}) {
     let blob = new Blob([responseText], { type: "application/x-nzb" });
     let link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -89,7 +106,7 @@ function saveFile(responseText, fileName) {
     document.body.removeChild(link);
 }
 
-function downloadFile(downloadLink, fileName, callback){
+function downloadFile({downloadLink, fileName, callback}){
     if (!fileName.endsWith('.nzb')){
         fileName = fileName + '.nzb'
     }
@@ -98,7 +115,10 @@ function downloadFile(downloadLink, fileName, callback){
         method: "GET",
         url: downloadLink,
         onload: function(nzbResponse) {
-            callback(nzbResponse.responseText, fileName)
+            callback({
+                responseText: nzbResponse.responseText,
+                fileName
+            })
         },
         onerror: function(){
             console.error("Failed Download for  " + downloadLink)
@@ -107,18 +127,221 @@ function downloadFile(downloadLink, fileName, callback){
     });
 }
 
+// ------------------------------------------------------------
+// handle sab category select
+
+customElements.define('sab-select-modal', class SabSelectModal extends HTMLElement {
+    constructor() {
+        super();
+    }
+
+    connectedCallback() {
+        // Create a shadow root
+        const shadow = this.attachShadow({ mode: "open" });
+        shadow.innerHTML = `
+             <style>
+                .show {
+                    display: block
+                }
+                .show .modal-dialog {
+                    display: block
+                }
+                
+                .btn {
+                    align-items: center;
+                    background-color: #06f;
+                    border: 2px solid #06f;
+                    box-sizing: border-box;
+                    color: #fff;
+                    cursor: pointer;
+                    display: inline-flex;
+                    fill: #000;
+                    font-size: 24px;
+                    font-weight: 400;
+                    height: 48px;
+                    justify-content: center;
+                    line-height: 24px;
+                    width: 100%;
+                    outline: 0;
+                    padding: 0 17px;
+                    text-align: center;
+                    text-decoration: none;
+                    transition: all .3s;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    touch-action: manipulation;
+                    border-radius: 5px;
+                }
+        
+                .btn:hover {
+                    background-color: #3385ff;
+                    border-color: #3385ff;
+                    fill: #06f;
+                }
+        
+                dialog {
+                    border: none !important;
+                    border-radius: calc(5px * 3.74);
+                    box-shadow: 0 0 #0000, 0 0 #0000, 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                    background-color: rgb(33, 37, 41);
+                    max-width: max(400px, 100vw);
+                    padding: 1.6rem;
+                    max-height: 70%;
+                }
+        
+                .dialog-header {
+                    color: white;
+                    font-family: Inter, sans-serif;
+                    font-size: 20px;
+                    font-weight: 600;
+                    display: flex;
+                    justify-content: space-between;
+                    padding-bottom: 10px;
+                }
+        
+                .buttons {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    min-width: 400px;
+                }
+        
+                .close {
+                    all: initial;
+                    background: unset;
+                    padding: 5px;
+                    margin: 0;
+                    border: unset;
+                }
+        
+                .close:not(:hover) {
+                    opacity: 0.3; /* Leichte Transparenz bei Hover */
+                }
+        
+                @media screen and (max-width: 450px) {
+                    .buttons {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                        min-width: 300px;
+                    }
+                }
+        
+                @media screen and (max-width: 350px) {
+                    .buttons {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                        min-width: 150px;
+                    }
+                }
+                
+
+            </style>
+           
+            <div data-bs-theme="dark">           
+                 <dialog id="dialog-1">
+                    <form method="dialog">
+                        <div class="dialog-header">
+                            <span>Wähle ...</span>
+                            <button class="close">
+                                <svg xmlns='http://www.w3.org/2000/svg' width="16" height="16" viewBox='0 0 16 16' fill='#CCC'>
+                                    <path d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/>
+                                </svg>
+                            </button>
+                        </div>
+                
+                        <div class="buttons buttons-here">
+                            <p>...</p>
+                        </div>
+                    </form>
+                </dialog>
+            </div>
+        `
+
+        this.dialog = shadow.querySelector('dialog')
+    }
+
+    showModal (items, callback) {
+        this.dialog.showModal()
+
+        const modalContent = this.shadowRoot.querySelector('.buttons-here');
+        modalContent.innerHTML = '';
+
+        items.forEach(item => {
+            const button = document.createElement('button');
+            button.textContent = item.name;
+            button.className = 'btn';
+            button.onclick = () => {
+                callback(item.value);
+            };
+            modalContent.appendChild(button);
+        });
+    }
+
+    closeModal () {
+        this.dialog.close()
+    }
+});
+
+const modal = document.createElement('sab-select-modal');
+document.body.appendChild(modal);
+
+function selectCategory(callback){
+    const mode='get_cats'
+    const requestURL = `${SAB_URL}?output=json&mode=${mode}&apikey=${SAB_API_KEY}`;
+
+    return GM_xmlhttpRequest({
+        method: "GET",
+        url: requestURL,
+        onload: function(response) {
+            const data = JSON.parse(response.responseText)
+            const categories = data.categories
+            const formattedCategories = categories.map(item => {
+                return {
+                    name: item.charAt(0).toUpperCase() + item.slice(1), // Erstes Zeichen groß und Rest klein
+                    value: item
+                };
+            });
+            modal.showModal(formattedCategories, callback);
+        },
+        onerror: function(response) {
+            console.error('Error during file upload', response.status, response.statusText);
+            alert("Could get Category's from SAB! (more in log)");
+        }
+    });
+}
+
+function handleCategorySelect(callfunction, parameter){
+    if (SAB_CATEGORY_SELECT_ON){
+        selectCategory((value) => {
+            parameter.category = value
+            callfunction(parameter)
+        })
+    } else {
+        callfunction(parameter)
+    }
+}
+
+// ------------------------------------------------------------
 // nzb handler
 
 function handleNzb(downloadLink, fileName){
     switch (AUSGABE) {
         case 'download':
-            downloadFile(downloadLink, fileName, saveFile)
+            downloadFile({
+                downloadLink, fileName, callback: saveFile
+            })
             break;
-        case 'URLtoSABnzbd':
-            addNZBtoSABnzbd(downloadLink, fileName)
+        case 'URLtoSABnzb':
+            handleCategorySelect(addNZBtoSABnzbd, {downloadLink, fileName})
             break;
-        case 'NZBtoSABnzbd':
-            downloadFile(downloadLink, fileName, uploadNZBtoSABnzbd)
+        case 'NZBtoSABnzb':
+            downloadFile({
+                downloadLink,
+                fileName,
+                callback: (parameter) => {handleCategorySelect(uploadNZBtoSABnzbd, parameter)}
+            })
             break;
         default:
             alert("Die Config für die Ausgaben ist falsch !")
@@ -140,6 +363,9 @@ function parseNzblnkUrl(url) {
 
     return result;
 }
+
+// ------------------------------------------------------------
+// load from ...
 
 function loadFromNzbKing(nzb_info, when_failed) {
     GM_xmlhttpRequest({
@@ -190,6 +416,9 @@ function loadNzb(nzblnk){
     loadFromNzbIndex(nzb_info, king)
 }
 
+// ------------------------------------------------------------
+// trigger
+
 function setLNKTrigger(element){
     if (element.tagName === 'A'){
         if (!element.href.startsWith('nzblnk')){
@@ -234,29 +463,3 @@ function observeSiteChanges(){
 setLNKTrigger(document.body);
 observeSiteChanges();
 
-
-// utils
-
-async function getRawFormData(formData) {
-    // Wir erstellen eine URL, auf die wir eine Anfrage mit unserer FormData machen werden.
-    const dummyURL = URL.createObjectURL(new Blob([]));
-    const response = await fetch(dummyURL, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            // Wir fügen absichtlich keinen Inhaltstyp hinzu, da der Browser automatisch den richtigen Inhaltstyp hinzufügen sollte,
-            // einschließlich des richtigen Grenzwerts für die multipart/form-data.
-        }
-    });
-
-    // Wir holen den Request, der tatsächlich gesendet wurde.
-    const request = response.request || response;
-
-    // Extrahieren des Rohkörpers aus dem Request.
-    const body = await request.text();
-
-    // Aufräumen der erstellten Ressource.
-    URL.revokeObjectURL(dummyURL);
-
-    return body;
-}
