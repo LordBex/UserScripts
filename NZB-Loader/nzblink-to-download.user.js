@@ -397,7 +397,7 @@ function loadFromNzbIndex(nzb_info, when_failed) {
         onload: function(response) {
             console.log(response)
             let data = JSON.parse(response.responseText);
-            if ( data.total ===  0 ){
+            if ( data.stats.total ===  0 ){
                 return when_failed()
             }
             console.log("Auf nzbindex.nl gefunden")
@@ -409,11 +409,11 @@ function loadFromNzbIndex(nzb_info, when_failed) {
 function loadNzb(nzblnk){
     let nzb_info = parseNzblnkUrl(nzblnk)
 
-    const king = function() {
-        loadFromNzbKing(nzb_info, function() { alert("Keine Nzb gefunden ")})
-    }
 
-    loadFromNzbIndex(nzb_info, king)
+    loadFromNzbKing(nzb_info, function() { alert("Keine Nzb auf NzbKing gefunden ")})
+
+
+    loadFromNzbIndex(nzb_info,  function() { alert("Keine Nzb auf NzbIndex gefunden ")})
 }
 
 // ------------------------------------------------------------
