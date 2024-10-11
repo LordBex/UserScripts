@@ -3,7 +3,7 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             v0.6
+// @version             v0.7
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
 // ==/UserScript==
@@ -23,7 +23,7 @@ const AUSGABE = 'download'
 const SAB_API_KEY = '....';
 const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // z.B. 'http://localhost:8080/sabnzbd/api'
 
-const SAB_CATEGORY_SELECT_ON = true   // Bitte den Api-Key verwenden (nicht den Nzb-Key) !
+const SAB_CATEGORY_SELECT_ON = true;  // Bitte den Api-Key verwenden (nicht den Nzb-Key) !
 // or setup:
 const SAB_DEFAULT_CATEGORY = '*' // default: *
 
@@ -140,13 +140,6 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
         const shadow = this.attachShadow({ mode: "open" });
         shadow.innerHTML = `
              <style>
-                .show {
-                    display: block
-                }
-                .show .modal-dialog {
-                    display: block
-                }
-                
                 .btn {
                     align-items: center;
                     background-color: #06f;
@@ -172,23 +165,23 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                     touch-action: manipulation;
                     border-radius: 5px;
                 }
-        
+
                 .btn:hover {
                     background-color: #3385ff;
                     border-color: #3385ff;
                     fill: #06f;
                 }
-        
+
                 dialog {
                     border: none !important;
                     border-radius: calc(5px * 3.74);
                     box-shadow: 0 0 #0000, 0 0 #0000, 0 25px 50px -12px rgba(0, 0, 0, 0.25);
                     background-color: rgb(33, 37, 41);
-                    max-width: max(400px, 100vw);
                     padding: 1.6rem;
                     max-height: 70%;
+                    max-width: max(400px, 100vw);
                 }
-        
+
                 .dialog-header {
                     color: white;
                     font-family: Inter, sans-serif;
@@ -198,14 +191,14 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                     justify-content: space-between;
                     padding-bottom: 10px;
                 }
-        
+
                 .buttons {
                     display: flex;
                     flex-direction: column;
                     gap: 10px;
                     min-width: 400px;
                 }
-        
+
                 .close {
                     all: initial;
                     background: unset;
@@ -213,11 +206,11 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                     margin: 0;
                     border: unset;
                 }
-        
+
                 .close:not(:hover) {
                     opacity: 0.3; /* Leichte Transparenz bei Hover */
                 }
-        
+
                 @media screen and (max-width: 450px) {
                     .buttons {
                         display: flex;
@@ -226,7 +219,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                         min-width: 300px;
                     }
                 }
-        
+
                 @media screen and (max-width: 350px) {
                     .buttons {
                         display: flex;
@@ -235,11 +228,11 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                         min-width: 150px;
                     }
                 }
-                
+
 
             </style>
-           
-            <div data-bs-theme="dark">           
+
+            <div data-bs-theme="dark">
                  <dialog id="dialog-1">
                     <form method="dialog">
                         <div class="dialog-header">
@@ -250,7 +243,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                                 </svg>
                             </button>
                         </div>
-                
+
                         <div class="buttons buttons-here">
                             <p>...</p>
                         </div>
@@ -313,6 +306,8 @@ function selectCategory(callback){
 }
 
 function handleCategorySelect(callfunction, parameter){
+    infoModal.closeModal()
+
     if (SAB_CATEGORY_SELECT_ON){
         selectCategory((value) => {
             parameter.category = value
@@ -324,13 +319,156 @@ function handleCategorySelect(callfunction, parameter){
 }
 
 // ------------------------------------------------------------
+// info dialog handler
+
+customElements.define('nzblnk-info-modal', class NzbInfoModal extends HTMLElement {
+    constructor() {
+        super();
+        this.createModal()
+    }
+
+    createModal() {
+        // Create a shadow root
+        const shadow = this.attachShadow({ mode: "open" });
+        // language=HTML
+        shadow.innerHTML = `
+             <style>
+
+                .btn {
+                    align-items: center;
+                    background-color: #06f;
+                    border: 2px solid #06f;
+                    box-sizing: border-box;
+                    color: #fff;
+                    cursor: pointer;
+                    display: inline-flex;
+                    fill: #000;
+                    font-size: 24px;
+                    font-weight: 400;
+                    height: 48px;
+                    justify-content: center;
+                    line-height: 24px;
+                    width: 100%;
+                    outline: 0;
+                    padding: 0 17px;
+                    text-align: center;
+                    text-decoration: none;
+                    transition: all .3s;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    touch-action: manipulation;
+                    border-radius: 5px;
+                }
+
+                .btn:hover {
+                    background-color: #3385ff;
+                    border-color: #3385ff;
+                    fill: #06f;
+                }
+
+                dialog {
+                    border: none !important;
+                    border-radius: calc(5px * 3.74);
+                    box-shadow: 0 0 #0000, 0 0 #0000, 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                    background-color: rgb(33, 37, 41);
+                    max-width: max(400px, 100vw);
+                    padding: 1.6rem;
+                    width: min(400px, 90vw);
+                }
+
+                .dialog-header {
+                    color: white;
+                    font-family: Inter, sans-serif;
+                    font-size: 20px;
+                    font-weight: 600;
+                    display: flex;
+                    justify-content: space-between;
+                    padding-bottom: 10px;
+                }
+
+                .close {
+                    all: initial;
+                    background: unset;
+                    padding: 5px;
+                    margin: 0;
+                    border: unset;
+                }
+
+                .close:not(:hover) {
+                    opacity: 0.3; /* Leichte Transparenz bei Hover */
+                }
+
+                .dialog-content {
+                    color: whitesmoke;
+                }
+
+            </style>
+
+            <div data-bs-theme="dark">
+                 <dialog id="dialog-2">
+                    <form method="dialog">
+                        <div class="dialog-header">
+                            <span>Info</span>
+                            <button class="close">
+                                <svg xmlns='http://www.w3.org/2000/svg' width="16" height="16" viewBox='0 0 16 16' fill='#CCC'>
+                                    <path d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="dialog-content">
+
+                        </div>
+                    </form>
+                </dialog>
+            </div>
+        `
+
+        this.dialog = shadow.querySelector('dialog')
+        this.modalContent = shadow.querySelector('.dialog-content')
+    }
+
+    showModal (callback) {
+        this.dialog.showModal()
+    }
+
+    resetModal() {
+        this.modalContent.innerHTML = '';
+    }
+
+    print(message){
+        let p = document.createElement('p');
+        console.log("Info:", message)
+        p.innerHTML = message
+        this.modalContent.appendChild(p)
+    }
+
+    closeModal () {
+        this.dialog.close()
+    }
+});
+
+const infoModal = document.createElement('nzblnk-info-modal');
+document.body.appendChild(infoModal);
+
+// ------------------------------------------------------------
 // nzb handler
 
 function handleNzb(downloadLink, fileName){
+
+    infoModal.print(`Nzb wurde gefunden: <a href='${downloadLink}'>Link</a> (Fallback)`)
+
     switch (AUSGABE) {
         case 'download':
             downloadFile({
-                downloadLink, fileName, callback: saveFile
+                downloadLink, fileName, callback: (args) => {
+                    saveFile(args)
+                    infoModal.print("Nzb gespeichert.")
+
+                    setTimeout(() => {
+                        infoModal.closeModal()
+                    }, 3000)
+                }
             })
             break;
         case 'URLtoSABnzb':
@@ -492,20 +630,37 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
 function loadNzb(nzblnk){
     let nzb_info = parseNzblnkUrl(nzblnk)
 
+    infoModal.resetModal()
+    infoModal.showModal()
+
     const loadFunctions = [
-        loadFromNzbIndex,
-        loadFromNzbKing,
-        loadFromBetaNzbIndex,
+        {
+            info: "NzbIndex",
+            func: loadFromNzbIndex,
+        },
+                {
+            info: "NzbKing",
+            func: loadFromNzbKing,
+        },
+                {
+            info: "Beta-Nzb-Index",
+            func: loadFromBetaNzbIndex,
+        }
     ]
 
     let load = function () {
-        alert("Keine Nzb gefunden !")
+        infoModal.print(`Keine Nzb gefunden :( `)
+        setTimeout(() => {
+            infoModal.closeModal()
+        }, 6000)
     };
 
     Array.from(loadFunctions).reverse().forEach(function (f){
         const old_load = load
         load = function () {
-            return f(nzb_info, old_load)
+            infoModal.print(`Versuche ${f.info} ....`)
+
+            return f.func(nzb_info, old_load)
         }
     })
 
@@ -558,4 +713,3 @@ function observeSiteChanges(){
 
 setLNKTrigger(document.body);
 observeSiteChanges();
-
