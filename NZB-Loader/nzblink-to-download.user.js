@@ -6,6 +6,7 @@
 // @version             v0.7
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
+// @icon                https://i.imgur.com/O1ao7fL.png
 // ==/UserScript==
 
 
@@ -27,9 +28,17 @@ const SAB_CATEGORY_SELECT_ON = true;  // Bitte den Api-Key verwenden (nicht den 
 // or setup:
 const SAB_DEFAULT_CATEGORY = '*' // default: *
 
+const DISABLE_SUCCESS_ALERT = false; // default: false
+
 
 // ------------------------------------------------------------
 // sab-code
+
+function successAlert(message) {
+    if (!DISABLE_SUCCESS_ALERT){
+        alert(message)
+    }
+}
 
 function addNZBtoSABnzbd({downloadLink, fileName, category=SAB_DEFAULT_CATEGORY}) {
     const mode = 'addurl';
@@ -48,7 +57,7 @@ function addNZBtoSABnzbd({downloadLink, fileName, category=SAB_DEFAULT_CATEGORY}
             let result = JSON.parse(response.responseText);
 
             if (result.status === true) {
-                alert('Erfolg! NZB hinzugefügt. ID: ' + result.nzo_ids.join(', '));
+                successAlert('Erfolg! NZB hinzugefügt. ID: ' + result.nzo_ids.join(', '));
             } else {
                 alert('Fehler beim Hinzufügen der NZB-Datei zu SABnzbd.\n'+result.error);
             }
@@ -80,7 +89,7 @@ function uploadNZBtoSABnzbd({responseText, fileName, category=SAB_DEFAULT_CATEGO
             console.log('Response body', response.responseText);
             let result = JSON.parse(response.responseText);
             if (result.status === true) {
-                alert('Success! NZB added. ID: ' + result.nzo_ids.join(', '));
+                successAlert('Success! NZB added. ID: ' + result.nzo_ids.join(', '));
             } else {
                 alert('Error adding NZB file to SABnzbd.\n'+(result.error || 'Unknown error'));
             }
@@ -141,9 +150,10 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
         shadow.innerHTML = `
              <style>
                 .btn {
+                    --_bg-color: var(--bg-color, #06f);
                     align-items: center;
-                    background-color: #06f;
-                    border: 2px solid #06f;
+                    background-color: var(--_bg-color);
+                    border: 2px solid var(--_bg-color);
                     box-sizing: border-box;
                     color: #fff;
                     cursor: pointer;
@@ -167,9 +177,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                 }
 
                 .btn:hover {
-                    background-color: #3385ff;
-                    border-color: #3385ff;
-                    fill: #06f;
+                    filter: brightness(70%);
                 }
 
                 dialog {
@@ -255,7 +263,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
         this.dialog = shadow.querySelector('dialog')
     }
 
-    showModal (items, callback) {
+    showModal (items) {
         this.dialog.showModal()
 
         const modalContent = this.shadowRoot.querySelector('.buttons-here');
@@ -265,8 +273,13 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
             const button = document.createElement('button');
             button.textContent = item.name;
             button.className = 'btn';
+
+            if (item.bgColor) {
+                button.style.setProperty('--bg-color', item.bgColor);
+            }
+
             button.onclick = () => {
-                callback(item.value);
+                item.f(); // call function
             };
             modalContent.appendChild(button);
         });
@@ -280,7 +293,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
 const modal = document.createElement('sab-select-modal');
 document.body.appendChild(modal);
 
-function selectCategory(callback){
+function selectCategory(callback, extra_buttons){
     const mode='get_cats'
     const requestURL = `${SAB_URL}?output=json&mode=${mode}&apikey=${SAB_API_KEY}`;
 
@@ -290,13 +303,17 @@ function selectCategory(callback){
         onload: function(response) {
             const data = JSON.parse(response.responseText)
             const categories = data.categories
-            const formattedCategories = categories.map(item => {
+            const buttons = categories.map(item => {
                 return {
                     name: item.charAt(0).toUpperCase() + item.slice(1), // Erstes Zeichen groß und Rest klein
-                    value: item
+                    value: item,
+                    f: () => { callback(item) }
                 };
             });
-            modal.showModal(formattedCategories, callback);
+            Array.from(extra_buttons).forEach((e) => {
+                buttons.push(e)
+            })
+            modal.showModal(buttons);
         },
         onerror: function(response) {
             console.error('Error during file upload', response.status, response.statusText);
@@ -305,14 +322,14 @@ function selectCategory(callback){
     });
 }
 
-function handleCategorySelect(callfunction, parameter){
+function handleCategorySelect({callfunction, parameter, extra_buttons= []}){
     infoModal.closeModal()
 
     if (SAB_CATEGORY_SELECT_ON){
         selectCategory((value) => {
             parameter.category = value
             callfunction(parameter)
-        })
+        }, extra_buttons)
     } else {
         callfunction(parameter)
     }
@@ -458,8 +475,8 @@ function handleNzb(downloadLink, fileName){
 
     infoModal.print(`Nzb wurde gefunden: <a href='${downloadLink}'>Link</a> (Fallback)`)
 
-    switch (AUSGABE) {
-        case 'download':
+    const actions = {
+        download: () => {
             downloadFile({
                 downloadLink, fileName, callback: (args) => {
                     saveFile(args)
@@ -470,20 +487,45 @@ function handleNzb(downloadLink, fileName){
                     }, 3000)
                 }
             })
-            break;
-        case 'URLtoSABnzb':
-            handleCategorySelect(addNZBtoSABnzbd, {downloadLink, fileName})
-            break;
-        case 'NZBtoSABnzb':
+        },
+        URLtoSABnzb: () => {
+            handleCategorySelect({
+                callfunction: addNZBtoSABnzbd, parameter: {downloadLink, fileName}, extra_buttons: [
+                    {
+                        name: 'Speichern', bgColor: '#0D4715', f: () => {
+                            infoModal.showModal()
+                            actions.download()
+                        }
+                    }
+                ]
+            })
+        },
+        NZBtoSABnzb: () => {
             downloadFile({
                 downloadLink,
                 fileName,
-                callback: (parameter) => {handleCategorySelect(uploadNZBtoSABnzbd, parameter)}
+                callback: (parameter) => {
+                    handleCategorySelect({
+                        callfunction: uploadNZBtoSABnzbd, parameter, extra_buttons: [
+                            {
+                                name: 'Speichern', bgColor: '#0D4715', f: () => {
+                                    saveFile(parameter)
+                                }
+                            }
+                        ]
+                    })
+                }
             })
-            break;
-        default:
-            alert("Die Config für die Ausgaben ist falsch !")
+        }
     }
+
+    let selected_action = actions[AUSGABE]
+    if (!selected_action){
+        console.error("Ungültige AUSGABE Konfiguration")
+        alert("Ungültige AUSGABE Konfiguration")
+        return;
+    }
+    selected_action()
 }
 
 function parseNzblnkUrl(url) {
@@ -515,11 +557,13 @@ function loadFromNzbKing(nzb_info, when_failed) {
             let parser = new DOMParser();
             let doc = parser.parseFromString(response.responseText, 'text/html');
 
-            for (let e of doc.querySelectorAll('a[href^="/nzb:"]')){
-                console.log("Auf nzbking gefunden")
-                handleNzb("https://www.nzbking.com" + e.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`)
-                return
+            const nzbLink = doc.querySelector('a[href^="/nzb:"]');
+            if (nzbLink) {
+                console.log("Auf nzbking gefunden");
+                handleNzb("https://www.nzbking.com" + nzbLink.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`);
+                return;
             }
+
             return when_failed()
         },
         onerror: function(){
@@ -585,7 +629,7 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
             let data = JSON.parse(response.responseText);
 
             if (!data?.data) {
-                 console.error("Irgengendwas ist komisch bei beta.nzbindex.com")
+                console.error("Irgengendwas ist komisch bei beta.nzbindex.com")
                 console.log(data)
                 return when_failed()
             }
@@ -625,7 +669,6 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
         }
     });
 }
-
 
 function loadNzb(nzblnk){
     let nzb_info = parseNzblnkUrl(nzblnk)
