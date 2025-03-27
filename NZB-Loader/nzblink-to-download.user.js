@@ -3,47 +3,103 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             v0.7
+// @version             v1.0
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
 // @icon                https://i.imgur.com/O1ao7fL.png
 // ==/UserScript==
 
-
+// ------------------------------------------------------------
 //- Default Config:
 
-const AUSGABE = 'download'
+const AUSGABE = 'menu'
 // mögliche Werte:
 // - download
+// - menu
 // - URLtoSABnzb
 // - NZBtoSABnzb (nicht kompatible mit Safari)
+// - custom (um deinen eigenen Handler `customHandler()` zu verwenden)
+
+const DISABLE_SUCCESS_ALERT = false; // default: false
 
 // ------------------------------------------------------------
 //- SabNzbd Config:
 
 const SAB_API_KEY = '....';
-const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // z.B. 'http://localhost:8080/sabnzbd/api'
+const SAB_URL = 'http://localhost:8080/api'; // z.B. 'http://localhost:8080/sabnzbd/api'
 
-const SAB_CATEGORY_SELECT_ON = true;  // Bitte den Api-Key verwenden (nicht den Nzb-Key) !
-// or setup:
+// Für Output im Menu notwendig:
+const SAB_CATEGORIES = [] // leer lassen, um sie direkt von SABnzbd zu holen / hierzu den api-key und nicht den nzb-key verwenden!
+// Für URLtoSABnzb und NZBtoSABnzb
 const SAB_DEFAULT_CATEGORY = '*' // default: *
+// Sab Buttons als Untermenü
+const SAB_SUB_MENU = false // default: false
 
-const DISABLE_SUCCESS_ALERT = false; // default: false
 
+// ------------------------------------------------------------
+// menu buttons
+
+async function openMenu(parameters) {
+    const sabButtons = await getCategoriesButtons(parameters)
+
+    const buttons = [
+        {
+            name: 'Download',
+            f: () => {
+                downloadAndSave(parameters)
+            },
+            bgColor: '#0D4715',
+            icon: 'https://raw.githubusercontent.com/sabnzbd/sabnzbd/refs/heads/develop/icons/nzb.ico'
+        }
+    ]
+
+    if (SAB_SUB_MENU) {
+        buttons.push({
+            name: 'Zu Sabnzbd',
+            f: () => {
+                modal.showModal([
+                    {
+                        name: 'Zurück',
+                        bgColor: '#4F959D',
+                        f: () => {
+                            modal.showModal(buttons)
+                        }
+                    },
+                    ...sabButtons
+                ])
+            },
+            icon: 'https://raw.githubusercontent.com/sabnzbd/sabnzbd/refs/heads/develop/icons/sabnzbd.ico'
+        })
+    } else {
+        buttons.push(...sabButtons)
+    }
+
+    infoModal.closeModal()
+    modal.showModal(buttons)
+}
+
+function customHandler({downloadLink, fileName, password}) {
+    // wird ausgeführt, wenn AUSGABE auf 'custom' gesetzt ist
+    alert("Custom Handler") // Hier kann eigener Code eingefügt werden
+}
 
 // ------------------------------------------------------------
 // sab-code
 
 function successAlert(message) {
-    if (!DISABLE_SUCCESS_ALERT){
+    if (!DISABLE_SUCCESS_ALERT) {
         alert(message)
     }
 }
 
-function addNZBtoSABnzbd({downloadLink, fileName, category=SAB_DEFAULT_CATEGORY}) {
+function addNZBtoSABnzbd({downloadLink, fileName, password, category = SAB_DEFAULT_CATEGORY}) {
     const mode = 'addurl';
     const name = encodeURIComponent(downloadLink);
-    const requestURL = `${SAB_URL}?output=json&mode=${mode}&name=${name}&nzbname=${fileName}&cat=${category}&apikey=${SAB_API_KEY}`;
+    const eu_name = encodeURIComponent(fileName);
+    const eu_pass = encodeURIComponent(password);
+    const requestURL = `${SAB_URL}?output=json&mode=${mode}&name=${name}&nzbname=${eu_name}&cat=${category}&password=${eu_pass}&apikey=${SAB_API_KEY}`;
+    console.log('Link to Sab:', requestURL);
+    infoModal.print("Sende Link zu Sab ...")
 
     GM_xmlhttpRequest({
         method: "GET",
@@ -52,60 +108,102 @@ function addNZBtoSABnzbd({downloadLink, fileName, category=SAB_DEFAULT_CATEGORY}
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json"
         },
-        onload: function(response) {
+        onload: function (response) {
             console.log(response.responseText);
             let result = JSON.parse(response.responseText);
 
             if (result.status === true) {
-                successAlert('Erfolg! NZB hinzugefügt. ID: ' + result.nzo_ids.join(', '));
+                infoModal.print("Erfolg! NZB hinzugefügt. ID: " + result.nzo_ids.join(', '))
+                infoModal.closeIn(3000)
             } else {
-                alert('Fehler beim Hinzufügen der NZB-Datei zu SABnzbd.\n'+result.error);
+                infoModal.showModal()
+                infoModal.error('Fehler beim Hinzufügen der NZB-Datei zu SABnzbd.\n' + result.error);
             }
         },
-        onerror: function(response) {
+        onerror: function (response) {
             console.error('Anfrage fehlgeschlagen', response);
             alert("Anfrage an SABnzb schlug fail ! (mehr im Log)")
         }
     });
 }
 
-function uploadNZBtoSABnzbd({responseText, fileName, category=SAB_DEFAULT_CATEGORY}) {
+function uploadNZBtoSABnzbd({responseText, fileName, password, category = SAB_DEFAULT_CATEGORY}) {
 
     let formData = new FormData();
-    let blob = new Blob([responseText], { type: "text/xml" });
+    let blob = new Blob([responseText], {type: "text/xml"});
     formData.append('name', blob, fileName);
     formData.append('mode', 'addfile');
     formData.append('nzbname', fileName);
+    formData.append('password', password);
     formData.append('output', 'json');
     formData.append('cat', category);
     formData.append('apikey', SAB_API_KEY);
+    console.log('Upload Nzb to Sab:', formData);
+    infoModal.print("Lade Nzb zu SABnzbd hoch ...")
 
     GM_xmlhttpRequest({
         method: "POST",
         url: SAB_URL,
         data: formData,
-        onload: function(response) {
+        onload: function (response) {
             console.log('Upload response', response.status, response.statusText);
             console.log('Response body', response.responseText);
             let result = JSON.parse(response.responseText);
             if (result.status === true) {
                 successAlert('Success! NZB added. ID: ' + result.nzo_ids.join(', '));
             } else {
-                alert('Error adding NZB file to SABnzbd.\n'+(result.error || 'Unknown error'));
+                alert('Error adding NZB file to SABnzbd.\n' + (result.error || 'Unknown error'));
             }
         },
-        onerror: function(response) {
+        onerror: function (response) {
             console.error('Error during file upload', response.status, response.statusText);
             alert("Could not upload NZB! (more in log)");
         }
     });
 }
 
+function getCatSabButton(parameters, category) {
+    return {
+        name: category.charAt(0).toUpperCase() + category.slice(1),
+        value: category,
+        f: () => {
+            parameters.category = category
+            addNZBtoSABnzbd(parameters)
+        }
+    }
+}
+
+async function getCategoriesButtons(parameters) {
+
+    if (SAB_CATEGORIES.length > 0) {
+        return SAB_CATEGORIES.map(item => {
+            return getCatSabButton(parameters, item);
+        })
+    }
+
+    const mode = 'get_cats'
+    const requestURL = new URL(SAB_URL);
+    requestURL.searchParams.append('output', 'json');
+    requestURL.searchParams.append('mode', mode);
+    requestURL.searchParams.append('apikey', SAB_API_KEY);
+
+    const response = await GM.xmlHttpRequest({url: requestURL}).catch(e => {
+        console.error('Error during file upload', e);
+        alert("Could get Category's from SAB! (more in log)");
+    });
+    const data = JSON.parse(response.responseText);
+    const categories = data.categories
+    return categories.map(item => {
+        return getCatSabButton(parameters, item)
+    })
+}
+
+
 // ------------------------------------------------------------
 // download file-code
 
 function saveFile({responseText, fileName}) {
-    let blob = new Blob([responseText], { type: "application/x-nzb" });
+    let blob = new Blob([responseText], {type: "application/x-nzb"});
     let link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = fileName // Dateiname ändern
@@ -115,38 +213,65 @@ function saveFile({responseText, fileName}) {
     document.body.removeChild(link);
 }
 
-function downloadFile({downloadLink, fileName, callback}){
-    if (!fileName.endsWith('.nzb')){
+function downloadFile({downloadLink, fileName, password, callback}) {
+    if (!fileName.endsWith('.nzb')) {
         fileName = fileName + '.nzb'
     }
     console.log("Download Nzb von " + downloadLink)
     GM_xmlhttpRequest({
         method: "GET",
         url: downloadLink,
-        onload: function(nzbResponse) {
+        onload: function (nzbResponse) {
             callback({
                 responseText: nzbResponse.responseText,
-                fileName
+                fileName,
+                password
             })
         },
-        onerror: function(){
+        onerror: function () {
             console.error("Failed Download for  " + downloadLink)
             alert("Nzb könnte nicht geladen werden !")
         }
     });
 }
 
-// ------------------------------------------------------------
-// handle sab category select
+function downloadAndSave({downloadLink, fileName, password}) {
+    fileName = `${fileName}{{${password}}}.nzb`
+    downloadFile({
+        downloadLink, fileName, password, callback: (args) => {
+            saveFile(args)
+            infoModal.print("Nzb gespeichert.")
 
-customElements.define('sab-select-modal', class SabSelectModal extends HTMLElement {
+            setTimeout(() => {
+                infoModal.closeModal()
+            }, 3000)
+        }
+    })
+}
+
+function downloadAndSab({downloadLink, fileName, password, category = SAB_DEFAULT_CATEGORY}) {
+    downloadFile({
+        downloadLink,
+        fileName,
+        password,
+        callback: (parameter) => {
+            parameter.category = category
+            uploadNZBtoSABnzbd(parameter)
+        }
+    })
+}
+
+// ------------------------------------------------------------
+// handle menu
+
+customElements.define('menu-select-modal', class MenuSelectModal extends HTMLElement {
     constructor() {
         super();
     }
 
     connectedCallback() {
         // Create a shadow root
-        const shadow = this.attachShadow({ mode: "open" });
+        const shadow = this.attachShadow({mode: "open"});
         shadow.innerHTML = `
              <style>
                 .btn {
@@ -174,6 +299,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
                     -webkit-user-select: none;
                     touch-action: manipulation;
                     border-radius: 5px;
+                    gap: 5px;
                 }
 
                 .btn:hover {
@@ -263,7 +389,7 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
         this.dialog = shadow.querySelector('dialog')
     }
 
-    showModal (items) {
+    showModal(items) {
         this.dialog.showModal()
 
         const modalContent = this.shadowRoot.querySelector('.buttons-here');
@@ -271,8 +397,22 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
 
         items.forEach(item => {
             const button = document.createElement('button');
-            button.textContent = item.name;
             button.className = 'btn';
+
+            if (item.innerHTML) {
+                button.innerHTML = item.innerHTML;
+            }
+
+            if (item.icon) {
+                const img = document.createElement('img');
+                img.src = item.icon;
+                img.style.marginRight = '8px';
+                img.style.width = '24px';
+                img.style.height = '24px';
+                button.appendChild(img);
+            }
+
+            button.appendChild(document.createTextNode(item.name));
 
             if (item.bgColor) {
                 button.style.setProperty('--bg-color', item.bgColor);
@@ -285,55 +425,13 @@ customElements.define('sab-select-modal', class SabSelectModal extends HTMLEleme
         });
     }
 
-    closeModal () {
+    closeModal() {
         this.dialog.close()
     }
 });
 
-const modal = document.createElement('sab-select-modal');
+const modal = document.createElement('menu-select-modal');
 document.body.appendChild(modal);
-
-function selectCategory(callback, extra_buttons){
-    const mode='get_cats'
-    const requestURL = `${SAB_URL}?output=json&mode=${mode}&apikey=${SAB_API_KEY}`;
-
-    return GM_xmlhttpRequest({
-        method: "GET",
-        url: requestURL,
-        onload: function(response) {
-            const data = JSON.parse(response.responseText)
-            const categories = data.categories
-            const buttons = categories.map(item => {
-                return {
-                    name: item.charAt(0).toUpperCase() + item.slice(1), // Erstes Zeichen groß und Rest klein
-                    value: item,
-                    f: () => { callback(item) }
-                };
-            });
-            Array.from(extra_buttons).forEach((e) => {
-                buttons.push(e)
-            })
-            modal.showModal(buttons);
-        },
-        onerror: function(response) {
-            console.error('Error during file upload', response.status, response.statusText);
-            alert("Could get Category's from SAB! (more in log)");
-        }
-    });
-}
-
-function handleCategorySelect({callfunction, parameter, extra_buttons= []}){
-    infoModal.closeModal()
-
-    if (SAB_CATEGORY_SELECT_ON){
-        selectCategory((value) => {
-            parameter.category = value
-            callfunction(parameter)
-        }, extra_buttons)
-    } else {
-        callfunction(parameter)
-    }
-}
 
 // ------------------------------------------------------------
 // info dialog handler
@@ -342,14 +440,15 @@ customElements.define('nzblnk-info-modal', class NzbInfoModal extends HTMLElemen
     constructor() {
         super();
         this.createModal()
+        this.closeTimer = null
     }
 
     createModal() {
         // Create a shadow root
-        const shadow = this.attachShadow({ mode: "open" });
+        const shadow = this.attachShadow({mode: "open"});
         // language=HTML
         shadow.innerHTML = `
-             <style>
+            <style>
 
                 .btn {
                     align-items: center;
@@ -422,12 +521,13 @@ customElements.define('nzblnk-info-modal', class NzbInfoModal extends HTMLElemen
             </style>
 
             <div data-bs-theme="dark">
-                 <dialog id="dialog-2">
+                <dialog id="dialog-2">
                     <form method="dialog">
                         <div class="dialog-header">
                             <span>Info</span>
                             <button class="close">
-                                <svg xmlns='http://www.w3.org/2000/svg' width="16" height="16" viewBox='0 0 16 16' fill='#CCC'>
+                                <svg xmlns='http://www.w3.org/2000/svg' width="16" height="16" viewBox='0 0 16 16'
+                                     fill='#CCC'>
                                     <path d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/>
                                 </svg>
                             </button>
@@ -445,7 +545,7 @@ customElements.define('nzblnk-info-modal', class NzbInfoModal extends HTMLElemen
         this.modalContent = shadow.querySelector('.dialog-content')
     }
 
-    showModal (callback) {
+    showModal(callback) {
         this.dialog.showModal()
     }
 
@@ -453,15 +553,30 @@ customElements.define('nzblnk-info-modal', class NzbInfoModal extends HTMLElemen
         this.modalContent.innerHTML = '';
     }
 
-    print(message){
+    print(message) {
         let p = document.createElement('p');
         console.log("Info:", message)
         p.innerHTML = message
         this.modalContent.appendChild(p)
     }
 
-    closeModal () {
+    error(message) {
+        let p = document.createElement('p');
+        p.style.color = 'red'
+        console.error("Error:", message)
+        p.innerHTML = message
+        this.modalContent.appendChild(p)
+    }
+
+    closeModal() {
         this.dialog.close()
+        clearTimeout(this.closeTimer)
+    }
+
+    closeIn(time) {
+        this.closeTimer = setTimeout(() => {
+            this.closeModal()
+        }, time)
     }
 });
 
@@ -471,56 +586,34 @@ document.body.appendChild(infoModal);
 // ------------------------------------------------------------
 // nzb handler
 
-function handleNzb(downloadLink, fileName){
+function handleNzb(downloadLink, fileName, password) {
 
     infoModal.print(`Nzb wurde gefunden: <a href='${downloadLink}'>Link</a> (Fallback)`)
 
     const actions = {
         download: () => {
-            downloadFile({
-                downloadLink, fileName, callback: (args) => {
-                    saveFile(args)
-                    infoModal.print("Nzb gespeichert.")
-
-                    setTimeout(() => {
-                        infoModal.closeModal()
-                    }, 3000)
+            downloadAndSave({downloadLink, fileName, password})
+        },
+        menu: () => {
+            openMenu({downloadLink, fileName, password}).then(
+                () => {
+                    console.log('menu opened')
                 }
-            })
+            )
         },
         URLtoSABnzb: () => {
-            handleCategorySelect({
-                callfunction: addNZBtoSABnzbd, parameter: {downloadLink, fileName}, extra_buttons: [
-                    {
-                        name: 'Speichern', bgColor: '#0D4715', f: () => {
-                            infoModal.showModal()
-                            actions.download()
-                        }
-                    }
-                ]
-            })
+            addNZBtoSABnzbd({downloadLink, fileName, password})
         },
         NZBtoSABnzb: () => {
-            downloadFile({
-                downloadLink,
-                fileName,
-                callback: (parameter) => {
-                    handleCategorySelect({
-                        callfunction: uploadNZBtoSABnzbd, parameter, extra_buttons: [
-                            {
-                                name: 'Speichern', bgColor: '#0D4715', f: () => {
-                                    saveFile(parameter)
-                                }
-                            }
-                        ]
-                    })
-                }
-            })
+            downloadAndSab({downloadLink, fileName, password})
+        },
+        custom: () => {
+            customHandler({downloadLink, fileName, password})
         }
     }
 
     let selected_action = actions[AUSGABE]
-    if (!selected_action){
+    if (!selected_action) {
         console.error("Ungültige AUSGABE Konfiguration")
         alert("Ungültige AUSGABE Konfiguration")
         return;
@@ -552,21 +645,21 @@ function loadFromNzbKing(nzb_info, when_failed) {
     GM_xmlhttpRequest({
         method: "GET",
         url: "https://www.nzbking.com/?q=" + nzb_info.h,
-        onload: function(response) {
-            console.log("King:",response)
+        onload: function (response) {
+            console.log("King:", response)
             let parser = new DOMParser();
             let doc = parser.parseFromString(response.responseText, 'text/html');
 
             const nzbLink = doc.querySelector('a[href^="/nzb:"]');
             if (nzbLink) {
                 console.log("Auf nzbking gefunden");
-                handleNzb("https://www.nzbking.com" + nzbLink.getAttribute('href'), `${nzb_info.t}{{${nzb_info.p}}}`);
+                handleNzb("https://www.nzbking.com" + nzbLink.getAttribute('href'), nzb_info.t, nzb_info.p)
                 return;
             }
 
             return when_failed()
         },
-        onerror: function(){
+        onerror: function () {
             console.error("Request zu NzbKing fehlgeschlagen")
             when_failed()
         }
@@ -581,10 +674,10 @@ function loadFromNzbIndex(nzb_info, when_failed) {
     GM_xmlhttpRequest({
         method: "GET",
         url: url,
-        onload: function(response) {
-            console.log("nzbindex",response)
+        onload: function (response) {
+            console.log("nzbindex", response)
             let data = JSON.parse(response.responseText);
-            if ( data.stats.total ===  0 ){
+            if (data.stats.total === 0) {
                 return when_failed()
             }
 
@@ -607,9 +700,9 @@ function loadFromNzbIndex(nzb_info, when_failed) {
 
             console.log("Auf nzbindex.nl gefunden")
 
-            handleNzb("https://nzbindex.nl/download/" + id, `${nzb_info.t}{{${nzb_info.p}}}`)
+            handleNzb("https://nzbindex.nl/download/" + id, nzb_info.t, nzb_info.p)
         },
-        onerror: function(response) {
+        onerror: function (response) {
             console.log("Request zu nzbindex.nl fehlgeschlagen")
             console.error(response)
             return when_failed()
@@ -624,8 +717,8 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
     GM_xmlhttpRequest({
         method: "GET",
         url: url,
-        onload: function(response) {
-            console.log("betaindex:" ,response)
+        onload: function (response) {
+            console.log("betaindex:", response)
             let data = JSON.parse(response.responseText);
 
             if (!data?.data) {
@@ -636,7 +729,7 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
 
             data = data.data
 
-            if ( data.page.totalElements === 0){
+            if (data.page.totalElements === 0) {
                 console.log("Nichts auf beta.nzbindex.com gefunden")
                 return when_failed()
             }
@@ -660,9 +753,9 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
 
             console.log("Auf beta.nzbindex.com gefunden")
 
-            handleNzb("https://beta.nzbindex.com/download/" + id + ".nzb", `${nzb_info.t}{{${nzb_info.p}}}`)
+            handleNzb("https://beta.nzbindex.com/download/" + id + ".nzb", nzb_info.t, nzb_info.p)
         },
-        onerror: function(response) {
+        onerror: function (response) {
             console.log("Request zu beta.nzbindex.com fehlgeschlagen")
             console.error(response)
             return when_failed()
@@ -670,7 +763,7 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
     });
 }
 
-function loadNzb(nzblnk){
+function loadNzb(nzblnk) {
     let nzb_info = parseNzblnkUrl(nzblnk)
 
     infoModal.resetModal()
@@ -681,11 +774,11 @@ function loadNzb(nzblnk){
             info: "NzbIndex",
             func: loadFromNzbIndex,
         },
-                {
+        {
             info: "NzbKing",
             func: loadFromNzbKing,
         },
-                {
+        {
             info: "Beta-Nzb-Index",
             func: loadFromBetaNzbIndex,
         }
@@ -698,7 +791,7 @@ function loadNzb(nzblnk){
         }, 6000)
     };
 
-    Array.from(loadFunctions).reverse().forEach(function (f){
+    Array.from(loadFunctions).reverse().forEach(function (f) {
         const old_load = load
         load = function () {
             infoModal.print(`Versuche ${f.info} ....`)
@@ -711,48 +804,57 @@ function loadNzb(nzblnk){
 }
 
 // ------------------------------------------------------------
+// svg-icons
+
+const downloadIcon = `
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" style="width: 20px; height: 20px;">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+</svg>
+`
+
+const regexIcon = `
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" style="width: 20px; height: 20px;">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v3.75c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 0 1-1.125-1.125v-3.75ZM14.25 8.625c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v8.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-8.25ZM3.75 16.125c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-5.25a1.125 1.125 0 0 1-1.125-1.125v-2.25Z" />
+</svg>
+`
+
+// ------------------------------------------------------------
 // trigger
 
-function setLNKTrigger(element){
-    if (element.tagName === 'A'){
-        if (!element.href.startsWith('nzblnk')){
-            console.log("Kein NZB-LNK element")
-            console.log(element)
-            return
-        }
-        console.log("Update NZB-LNK element")
-        element.dataset.link = element.href
-        element.href = ""
-
-        element.addEventListener('click', (event) => {
-            event.preventDefault();
-            loadNzb(element.dataset.link);
-        });
-    } else {
-        element.querySelectorAll('a[href^="nzblnk"]').forEach((e) => {
-            setLNKTrigger(e)
-        });
+// Event-Delegation für alle nzblnk-Links
+document.body.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href^="nzblnk"]');
+    if (link) {
+        event.preventDefault();
+        loadNzb(link.href);
     }
+});
+
+// Findet bereits vorhandene Links
+function processExistingLinks() {
+    document.querySelectorAll('a[href^="nzblnk"]').forEach((link) => {
+        // Optional: Link-Styling oder andere Anpassungen
+        link.setAttribute('title', 'NZB herunterladen');
+    });
 }
 
-function observeSiteChanges(){
-    const callback = function(mutationsList, observer) {
-        for ( let mutation of mutationsList ) {
-            if ( mutation.type === 'childList' ) {
-                for ( let node of mutation.addedNodes ){
-                    if (!node instanceof Node || node.nodeType !== Node.ELEMENT_NODE) {
-                        continue
-                    }
-                    setLNKTrigger(node)
-                }
-            }
+// Überwacht DOM-Änderungen für dynamisch hinzugefügte Links
+function observeSiteChanges() {
+    const observer = new MutationObserver((mutationsList) => {
+        const hasNewContent = mutationsList.some(mutation =>
+            mutation.type === 'childList' && mutation.addedNodes.length > 0);
+
+        if (hasNewContent) {
+            // Nur bei tatsächlichen Änderungen Links verarbeiten
+            processExistingLinks();
         }
-    };
-    const observer = new MutationObserver(callback);
-    const config = { childList: true, subtree: true };
-    // Die Überwachung starten
-    observer.observe(document, config);
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
 }
 
-setLNKTrigger(document.body);
+processExistingLinks();
 observeSiteChanges();
