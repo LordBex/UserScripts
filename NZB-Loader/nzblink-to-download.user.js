@@ -3,9 +3,13 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             v1.0
+// @version             v1.0.1
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
+// @connect             nzbindex.nl
+// @connect             beta.nzbindex.com
+// @connect             www.nzbking.com
+// @connect             localhost
 // @icon                https://i.imgur.com/O1ao7fL.png
 // ==/UserScript==
 
@@ -187,15 +191,28 @@ async function getCategoriesButtons(parameters) {
     requestURL.searchParams.append('mode', mode);
     requestURL.searchParams.append('apikey', SAB_API_KEY);
 
-    const response = await GM.xmlHttpRequest({url: requestURL}).catch(e => {
-        console.error('Error during file upload', e);
-        alert("Could get Category's from SAB! (more in log)");
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: requestURL.toString(),
+            headers: {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            },
+            onload: function(response) {
+                const data = JSON.parse(response.responseText);
+                const categories = data.categories;
+                resolve(categories.map(item => {
+                    return getCatSabButton(parameters, item);
+                }));
+            },
+            onerror: function(error) {
+                console.error('Error during file upload', error);
+                alert("Could not get Categories from SAB! (more in log)");
+                reject(error);
+            }
+        });
     });
-    const data = JSON.parse(response.responseText);
-    const categories = data.categories
-    return categories.map(item => {
-        return getCatSabButton(parameters, item)
-    })
 }
 
 
