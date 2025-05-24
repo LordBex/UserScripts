@@ -1,4 +1,8 @@
-## NZBLink-to-Download UserScript
+
+<div align="center" style="display: flex; align-items: center; justify-content: center;">
+    <img src="images/icon.png" style="max-height: 50px; margin-right: 15px;">
+    <h1>NZBLink-to-Download UserScript</h1>
+</div>
 
 ### Beschreibung
 Mit diesem UserScript kannst du NZB-Dateien direkt von nzbindex.nl runterladen, sobald du auf Links klickst, die mit dem "nzblnk:" Schema erstellt wurden.
@@ -21,11 +25,12 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 
 #### Ausgabe: 
 
-| Wert         | Beschreibung                                                                |
-|--------------|-----------------------------------------------------------------------------|
-| URLtoSABnzbd | Die NZB-URL wird an SABnzbd weitergeleitet, NZB wird von SABnzbd geladen.   |
-| NZBtoSABnzbd | Die NZB direkt wird an SABnzbd weitergleitet, funktioniert nicht bei Safari |
-| download     | Die NZB wird in deinem Download Ordner gespeichert                          |
+| Wert         | Beschreibung                                                                                                    |
+|--------------|-----------------------------------------------------------------------------------------------------------------|
+| URLtoSABnzbd | Die NZB-URL wird an SABnzbd weitergeleitet, NZB wird von SABnzbd geladen.                                       |
+| NZBtoSABnzbd | Die NZB direkt wird an SABnzbd weitergleitet, funktioniert nicht bei Safari                                     |
+| download     | Die NZB wird in deinem Download Ordner gespeichert                                                              |
+| menu         | Öffnet ein Menu in dem man manuell auswählen kann ob die Nzb an Sab gesendet wird oder gedownloaded werden soll |
 
 **Für SABnzbd**
 
@@ -33,15 +38,28 @@ Es wurde speziell für die Safari-Erweiterung [Userscripts](#userscripts) erstel
 const SAB_API_KEY = '...'; // required
 const SAB_URL = 'http://localhost:8080/sabnzbd/api'; // required z.B. 'http://localhost:8080/sabnzbd/api'
 
-const SAB_CATEGORY_SELECT_ON = false // SABnzbd Kategorie Auswahl
+// leer lassen, um sie direkt von SABnzbd zu holen / hierzu den api-key und nicht den nzb-key verwenden!
+const SAB_CATEGORIES = []  
+
+// SABnzbd Kategorie Auswahl
 const SAB_DEFAULT_CATEGORY = '*' // default: *
+// Sab Buttons als Untermenü -> wird empfohlen, wenn viele Kategorien vorhanden sind
+const SAB_SUB_MENU = false // default: false
 ```
 
-> Wenn SAB_CATEGORY_SELECT_ON aktiviert ist, ist der Einsatz des API-Keys erforderlich, da der NZB-Key nicht ausreicht.
+> Wenn keine Kategorien in SAB_CATEGORIES hinterlegt sind, werden diese von SAB automatisch bezogen dafür wird der Einsatz des API-Keys erforderlich, da der NZB-Key nicht ausreichend Berechtigungen hat.
+> Für eine höhere Sicherheit, aber etwas weniger Komfort, wäre dies die bessere Wahl.
+> Zusätzlich spart man sich die extra Anfrage an Sab, um die Kategorien zu laden.
+
+### Menu Ausgabe
 
 <center>
-<img src="images/cat-select-modal.png" style="max-height: 400px">
+<img src="images/menu.png" style="max-height: 400px">
 </center>
+
+Das neue Menu ersetzt die alte Kategorie Auswahl. Ist jedoch deutlich flexibler und bietet mehr Möglichkeiten.
+Zum Beispiel kannst du nun neben SABnzbd auch denn Download einer NZB-Datei auswählen.
+Wenn du sehr viele Kategorien hast, wird empfohlen die Option **SAB_SUB_MENU** zu aktivieren, dann werden die ganzen Kategorien in ein Untermenü gepackt.
 
 
 ### Installation

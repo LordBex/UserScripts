@@ -3,11 +3,10 @@
 // @description         Automatically downloads NZB files from nzbindex.nl when links with the "nzblnk:" scheme are clicked.
 // @description:de_DE   Lädt NZB-Dateien automatisch von nzbindex.nl herunter, wenn auf Links mit dem Schema "nzblnk:" geklickt wird.
 // @author              LordBex
-// @version             v1.0.1
+// @version             v1.0.2
 // @match               *://*/*
 // @grant               GM_xmlhttpRequest
-// @connect             nzbindex.nl
-// @connect             beta.nzbindex.com
+// @connect             nzbindex.com
 // @connect             www.nzbking.com
 // @connect             localhost
 // @icon                https://i.imgur.com/O1ao7fL.png
@@ -16,7 +15,7 @@
 // ------------------------------------------------------------
 //- Default Config:
 
-const AUSGABE = 'menu'
+const AUSGABE = 'download'
 // mögliche Werte:
 // - download
 // - menu
@@ -684,52 +683,8 @@ function loadFromNzbKing(nzb_info, when_failed) {
 }
 
 function loadFromNzbIndex(nzb_info, when_failed) {
-    console.log("Suche auf nzbindex.nl")
-
-    let url = `https://nzbindex.nl/search/json?q=${nzb_info.h}&max=5&minage=0&maxage=0&hidespam=1&hidepassword=0&sort=agedesc&minsize=0&maxsize=0&complete=0&hidecross=0&hasNFO=0&poster=&p=0`
-
-    GM_xmlhttpRequest({
-        method: "GET",
-        url: url,
-        onload: function (response) {
-            console.log("nzbindex", response)
-            let data = JSON.parse(response.responseText);
-            if (data.stats.total === 0) {
-                return when_failed()
-            }
-
-            if (data.results === undefined) {
-                console.log("Keine Ergebnisse auf nzbindex.nl gefunden - result is undefined")
-                return when_failed()
-            }
-
-            if (data.results.length === 0) {
-                console.log("Keine Ergebnisse auf nzbindex.nl gefunden - result is empty")
-                return when_failed()
-            }
-
-            if (!data.results[0]?.id) {
-                console.log("Id ist nicht gesetzt bei nzbindex.nl")
-                return when_failed()
-            }
-
-            let id = data.results[0]?.id
-
-            console.log("Auf nzbindex.nl gefunden")
-
-            handleNzb("https://nzbindex.nl/download/" + id, nzb_info.t, nzb_info.p)
-        },
-        onerror: function (response) {
-            console.log("Request zu nzbindex.nl fehlgeschlagen")
-            console.error(response)
-            return when_failed()
-        }
-    });
-}
-
-function loadFromBetaNzbIndex(nzb_info, when_failed) {
-    console.log("Suche auf beta.nzbindex.com")
-    let url = `https://beta.nzbindex.com/api/search?q=${nzb_info.h}&max=5&sort=agedesc`
+    console.log("Suche auf nzbindex.com")
+    let url = `https://nzbindex.com/api/search?q=${nzb_info.h}&max=5&sort=agedesc`
 
     GM_xmlhttpRequest({
         method: "GET",
@@ -739,7 +694,7 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
             let data = JSON.parse(response.responseText);
 
             if (!data?.data) {
-                console.error("Irgengendwas ist komisch bei beta.nzbindex.com")
+                console.error("Irgengendwas ist komisch bei nzbindex.com")
                 console.log(data)
                 return when_failed()
             }
@@ -747,33 +702,31 @@ function loadFromBetaNzbIndex(nzb_info, when_failed) {
             data = data.data
 
             if (data.page.totalElements === 0) {
-                console.log("Nichts auf beta.nzbindex.com gefunden")
+                console.log("Nichts auf nzbindex.com gefunden")
                 return when_failed()
             }
 
             if (data.content === undefined) {
-                console.log("Keine Ergebnisse auf beta.nzbindex.com gefunden - result is undefined")
+                console.log("Keine Ergebnisse auf nzbindex.com gefunden - result is undefined")
                 return when_failed()
             }
 
             if (data.content.length === 0) {
-                console.log("Keine Ergebnisse auf beta.nzbindex.com gefunden - result is empty")
+                console.log("Keine Ergebnisse auf nzbindex.com gefunden - result is empty")
                 return when_failed()
             }
 
             if (!data.content[0]?.id) {
-                console.log("Id ist nicht gesetzt bei beta.nzbindex.com")
+                console.log("Id ist nicht gesetzt bei nzbindex.com")
                 return when_failed()
             }
 
-            let id = data.content[0].id
-
-            console.log("Auf beta.nzbindex.com gefunden")
-
-            handleNzb("https://beta.nzbindex.com/download/" + id + ".nzb", nzb_info.t, nzb_info.p)
+            let ids = data.content.map(item => item.id).join('%2C');
+            console.log("Auf nzbindex.com gefunden")
+            handleNzb("https://nzbindex.com/download?ids=" + ids, nzb_info.t, nzb_info.p)
         },
         onerror: function (response) {
-            console.log("Request zu beta.nzbindex.com fehlgeschlagen")
+            console.log("Request zu nzbindex.com fehlgeschlagen")
             console.error(response)
             return when_failed()
         }
@@ -794,10 +747,6 @@ function loadNzb(nzblnk) {
         {
             info: "NzbKing",
             func: loadFromNzbKing,
-        },
-        {
-            info: "Beta-Nzb-Index",
-            func: loadFromBetaNzbIndex,
         }
     ]
 
